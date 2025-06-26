@@ -1,0 +1,13 @@
+.app-container {
+  display: flex;
+  height: 100vh;
+  width: 100%;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  padding: 2rem;
+  background-color: #f5f7fa;
+  overflow-y: auto;
+} 

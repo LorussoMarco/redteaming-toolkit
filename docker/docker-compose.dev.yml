@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  db:
+    image: mysql:8.0
+    container_name: redteaming-db-dev
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: ${DB_NAME:-redteaming}
+      MYSQL_USER: ${DB_USER:-redteam}
+      MYSQL_PASSWORD: ${DB_PASSWORD:-redteampassword}
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ../docker/db/init:/docker-entrypoint-initdb.d
+    networks:
+      - redteaming-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/backend/Dockerfile
+    image: redteaming-toolkit/backend-dev
+    container_name: redteaming-backend-dev
+    hostname: backend
+    ports:
+      - "5000:5000"
+    volumes:
+      - ../backend:/app/backend
+      - ssl_certs:/app/backend/certificates
+    env_file:
+      - ../.env
+    environment:
+      - DB_HOST=db
+      - DEBUG=true
+      - STORAGE_MODE=db
+      - FLASK_ENV=development
+    restart: unless-stopped
+    privileged: true
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      redteaming-network:
+        aliases:
+          - backend
+    healthcheck:
+      test: ["CMD", "curl", "-f", "-k", "https://localhost:5000/api/system/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  frontend-dev:
+    image: redteaming-toolkit/frontend-dev
+    container_name: redteaming-frontend-dev
+    hostname: frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ../frontend:/app
+      - /app/node_modules
+      - ssl_certs:/app/certificates
+    working_dir: /app
+    command: HTTPS=true SSL_CRT_FILE=/app/certificates/cert.pem SSL_KEY_FILE=/app/certificates/key.pem npm start
+    environment:
+      - NODE_ENV=development
+      - REACT_APP_API_URL=https://backend:5000/api
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    networks:
+      redteaming-network:
+        aliases:
+          - frontend
+
+networks:
+  redteaming-network:
+    driver: bridge 
+
+volumes:
+  mysql_data:
+    driver: local
+  ssl_certs:
+    driver: local 
